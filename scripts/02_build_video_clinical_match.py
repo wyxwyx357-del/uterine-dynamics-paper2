@@ -46,6 +46,8 @@ def show_date(x: str) -> str:
 
 
 def by_prefix(df: pd.DataFrame, prefix: str) -> str:
+    if prefix in df.columns:
+        return prefix
     hits = [c for c in df.columns if str(c).split("\n", 1)[0] == prefix]
     if len(hits) != 1:
         raise ValueError(f"column prefix {prefix!r}: expected 1 match, got {hits}")
