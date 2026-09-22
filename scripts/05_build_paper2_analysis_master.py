@@ -111,6 +111,30 @@ def resolve_clinical_columns(base: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     return renamed, mapping
 
 
+def parse_activity_count_column(values: pd.Series, column: str) -> pd.Series:
+    """Keep missing counts missing, but reject any invalid nonmissing count."""
+    raw = values.astype("string").str.strip()
+    missing = (
+        values.isna()
+        | raw.eq("").fillna(False)
+        | raw.str.lower().isin({"na", "n/a", "nan", "none", "<na>"})
+    ).fillna(False)
+    numeric = pd.to_numeric(raw.mask(missing), errors="coerce")
+    numeric_as_float = numeric.astype("float64")
+    invalid = (~missing) & (
+        ~np.isfinite(numeric_as_float)
+        | (numeric_as_float < 0)
+        | (numeric_as_float != np.floor(numeric_as_float))
+    )
+    if invalid.any():
+        bad_rows = (np.flatnonzero(invalid.to_numpy(dtype=bool)) + 2).tolist()
+        raise ValueError(
+            f"patient audit: {column} has invalid nonmissing activity count; "
+            f"expected a nonnegative integer at input Excel row(s): {bad_rows[:10]}"
+        )
+    return numeric_as_float
+
+
 def build_master(
     patient_audit: pd.DataFrame, patient_features: pd.DataFrame,
     gate: pd.DataFrame, video_audit: pd.DataFrame,
@@ -192,8 +216,12 @@ def build_master(
         raise ValueError("patient audit: pregnancy parseability flag disagrees with parsed 0/1")
     if base.loc[base.eligible_pregnancy_association, "clinical_pregnancy"].isna().any():
         raise ValueError("patient audit: pregnancy eligibility includes missing outcome")
-    activity_numeric = base[["peristalsis_forward_count", "peristalsis_reverse_count"]].apply(
-        pd.to_numeric, errors="coerce"
+    activity_numeric = pd.DataFrame(
+        {
+            column: parse_activity_count_column(base[column], column)
+            for column in ("peristalsis_forward_count", "peristalsis_reverse_count")
+        },
+        index=base.index,
     )
     if activity_numeric.loc[base.eligible_activity_association].isna().all(axis=1).any():
         raise ValueError("patient audit: activity eligibility includes no recorded activity")

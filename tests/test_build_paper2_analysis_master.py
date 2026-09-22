@@ -105,6 +105,48 @@ def test_zero_activity_and_missing_pregnancy_preserved():
     assert not second.eligible_pregnancy_association
 
 
+@pytest.mark.parametrize("column,invalid", [
+    ("peristalsis_forward_count", "unexpected text"),
+    ("peristalsis_reverse_count", "未记录"),
+    ("peristalsis_forward_count", -1),
+    ("peristalsis_reverse_count", 0.5),
+    ("peristalsis_forward_count", float("inf")),
+])
+def test_invalid_nonmissing_activity_count_rejected(column, invalid):
+    base, features, gate, video_audit = inputs()
+    base.loc[0, column] = invalid
+    with pytest.raises(ValueError, match=rf"{column}.*nonnegative integer"):
+        master_module.build_master(base, features, gate, video_audit)
+
+
+def test_invalid_activity_rejected_even_in_ineligible_patient():
+    base, features, gate, video_audit = inputs()
+    base.loc[2, "peristalsis_forward_count"] = "unexpected text"
+    with pytest.raises(ValueError, match="peristalsis_forward_count.*nonnegative integer"):
+        master_module.build_master(base, features, gate, video_audit)
+
+
+def test_missing_one_direction_and_zero_other_direction_are_valid():
+    base, features, gate, video_audit = inputs()
+    base.loc[0, "peristalsis_forward_count"] = " N/A "
+    master, _ = master_module.build_master(base, features, gate, video_audit)
+    first = master.set_index("case_id").loc["101"]
+    assert pd.isna(first.peristalsis_forward_count)
+    assert first.peristalsis_reverse_count == 0
+    assert first.eligible_activity_F01
+
+
+def test_numeric_count_strings_and_zero_are_preserved():
+    base, features, gate, video_audit = inputs()
+    base.loc[0, "peristalsis_forward_count"] = " 2.0 "
+    base.loc[0, "peristalsis_reverse_count"] = "0"
+    master, _ = master_module.build_master(base, features, gate, video_audit)
+    first = master.set_index("case_id").loc["101"]
+    assert first.peristalsis_forward_count == 2
+    assert first.peristalsis_reverse_count == 0
+    assert first.eligible_activity_F01
+
+
 def test_f15_missing_does_not_remove_f01_activity_eligibility():
     base, features, gate, video_audit = inputs()
     master, _ = master_module.build_master(base, features, gate, video_audit)
