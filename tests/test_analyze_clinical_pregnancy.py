@@ -28,6 +28,8 @@ def fixture(n=240):
         "embryo_type": np.where(np.arange(n) % 3, "blastocyst", "cleavage"),
         "endometrial_type": np.where(np.arange(n) % 4, "2", "3"),
         "cycle_type": np.where(np.arange(n) % 5, "natural", "artificial"),
+        "date_audit_pass": [True] * n,
+        "final_audit_status": ["PASS_THREE_WAY"] * n,
     })
     outcome = rng.binomial(1, .45, n)
     table["clinical_pregnancy"] = outcome
@@ -163,19 +165,37 @@ def test_holm_applies_only_to_three_adjusted_secondary_results():
 
 def test_synthetic_command_line_outputs_and_hashes(tmp_path):
     table, manifest = fixture()
+    biochemical = np.where(table.clinical_pregnancy.eq(1), "是",
+                           np.where(np.arange(len(table)) % 2, "否", "是"))
+    clinical = np.where(table.clinical_pregnancy.eq(1), "是",
+                        np.where(biochemical == "否", "-", "否"))
+    structural = biochemical == "否"
+    table.loc[structural, "clinical_pregnancy"] = np.nan
+    table.loc[structural, "clinical_pregnancy_parseable_01"] = False
+    table.loc[structural, "eligible_pregnancy_association"] = False
+    for feature in module.FEATURES:
+        table.loc[structural, f"eligible_pregnancy_{feature}"] = False
+        manifest["cohort_counts"][f"pregnancy_{feature}_eligible"] = len(table) - int(structural.sum())
+    manifest["cohort_counts"]["pregnancy_eligible"] = len(table) - int(structural.sum())
     master = tmp_path / "paper2_analysis_master.csv"
     table.to_csv(master, index=False)
     gate = tmp_path / "paper2_feature_gate.csv"
     gate.write_text("frozen synthetic gate\n", encoding="utf-8")
-    manifest["input_paths"] = {"frozen_gate": str(gate)}
+    audit_path = tmp_path / "patient_audit.xlsx"
+    pd.DataFrame({"case_id": table.case_id, "biochemical_pregnancy": biochemical,
+                  "clinical_pregnancy": clinical}).to_excel(
+                      audit_path, sheet_name="02_患者级状态", index=False)
+    manifest["input_paths"] = {"frozen_gate": str(gate), "patient_audit": str(audit_path)}
+    manifest["input_sha256"] = {"patient_audit": module.sha256(audit_path)}
     manifest["frozen_gate_sha256"] = module.sha256(gate)
     manifest["output_sha256"] = {"master_csv": module.sha256(master)}
     source_manifest = tmp_path / "manifest.json"
     source_manifest.write_text(json.dumps(manifest), encoding="utf-8")
     output = tmp_path / "pregnancy_output"
-    subprocess.run([sys.executable, str(SCRIPT), "--master", str(master),
-                    "--master-manifest", str(source_manifest), "--output", str(output)],
-                   check=True, capture_output=True, text=True)
+    run = subprocess.run([sys.executable, str(SCRIPT), "--master", str(master),
+                          "--master-manifest", str(source_manifest), "--output", str(output)],
+                         capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr
     results = pd.read_csv(output / "pregnancy_associations.csv")
     assert len(results) == 12
     assert results.status.eq("EVALUABLE").all()
@@ -183,3 +203,30 @@ def test_synthetic_command_line_outputs_and_hashes(tmp_path):
     assert recorded["input_sha256"]["master"] == module.sha256(master)
     assert recorded["output_sha256"]["associations"] == module.sha256(
         output / "pregnancy_associations.csv")
+    assert recorded["outcome_derivation"].startswith("recorded clinical")
+
+
+def test_biochemical_negative_dash_is_clinical_negative(tmp_path):
+    master, _ = fixture(4)
+    master["clinical_pregnancy"] = [1, 0, np.nan, np.nan]
+    audit = pd.DataFrame({"case_id": master.case_id,
+                          "biochemical_pregnancy": ["是", "是", "否", "否"],
+                          "clinical_pregnancy": ["是", "否", "-", "-"]})
+    path = tmp_path / "audit.xlsx"
+    audit.to_excel(path, sheet_name="02_患者级状态", index=False)
+    derived, counts = module.derive_clinical_outcome(master, path)
+    assert derived.tolist() == [1, 0, 0, 0]
+    assert counts["structural_dash_recoded_negative_n"] == 2
+    assert counts["biochemical_negative_n"] == 2
+
+
+def test_conflicting_biochemical_and_clinical_labels_rejected(tmp_path):
+    master, _ = fixture(2)
+    master["clinical_pregnancy"] = [1, 0]
+    audit = pd.DataFrame({"case_id": master.case_id,
+                          "biochemical_pregnancy": ["否", "是"],
+                          "clinical_pregnancy": ["是", "否"]})
+    path = tmp_path / "audit.xlsx"
+    audit.to_excel(path, sheet_name="02_患者级状态", index=False)
+    with pytest.raises(ValueError, match="labels disagree"):
+        module.derive_clinical_outcome(master, path)

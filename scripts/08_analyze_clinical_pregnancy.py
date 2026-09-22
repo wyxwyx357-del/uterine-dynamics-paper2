@@ -226,8 +226,57 @@ def holm_secondary(results: pd.DataFrame) -> pd.DataFrame:
     return results
 
 
-def analyze(master: pd.DataFrame, manifest: dict) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+def derive_clinical_outcome(master: pd.DataFrame, audit_path: Path) -> tuple[pd.Series, dict]:
+    audit = pd.read_excel(audit_path, sheet_name="02_患者级状态", engine="openpyxl",
+                          dtype={"case_id": "string"})
+    required = {"case_id", "biochemical_pregnancy", "clinical_pregnancy"}
+    if missing := required - set(audit.columns):
+        raise ValueError(f"patient audit: missing outcome columns {sorted(missing)}")
+    audit["case_id"] = audit.case_id.astype("string").str.strip().str.replace(r"\.0$", "", regex=True)
+    if (audit.case_id.isna().any() or audit.case_id.duplicated().any()
+            or set(audit.case_id) != set(master.case_id)):
+        raise ValueError("patient audit: patient IDs differ from verified master")
+    audit = audit.set_index("case_id").loc[master.case_id]
+    biochemical = audit.biochemical_pregnancy.astype("string").str.strip().map({"是": 1, "否": 0})
+    clinical_raw = audit.clinical_pregnancy.astype("string").str.strip()
+    if biochemical.isna().any() or not clinical_raw.isin({"是", "否", "-"}).all():
+        raise ValueError("patient audit: unexpected biochemical or clinical pregnancy label")
+    if ((biochemical.eq(0) & clinical_raw.ne("-"))
+            | (biochemical.eq(1) & clinical_raw.eq("-"))).any():
+        raise ValueError("patient audit: biochemical and clinical pregnancy labels disagree")
+    recorded = clinical_raw.map({"是": 1.0, "否": 0.0, "-": np.nan})
+    original = numeric(master.clinical_pregnancy, "clinical_pregnancy")
+    if not np.array_equal(recorded.to_numpy(dtype=float), original.to_numpy(dtype=float), equal_nan=True):
+        raise ValueError("patient audit: recorded clinical pregnancy differs from master")
+    derived = recorded.fillna(0).reset_index(drop=True)
+    derived.index = master.index
+    audit_counts = {"biochemical_positive_n": int(biochemical.eq(1).sum()),
+                    "biochemical_negative_n": int(biochemical.eq(0).sum()),
+                    "recorded_clinical_positive_n": int(recorded.eq(1).sum()),
+                    "recorded_clinical_negative_n": int(recorded.eq(0).sum()),
+                    "structural_dash_recoded_negative_n": int(recorded.isna().sum()),
+                    "derived_clinical_positive_n": int(derived.eq(1).sum()),
+                    "derived_clinical_negative_n": int(derived.eq(0).sum())}
+    return derived, audit_counts
+
+
+def analyze(master: pd.DataFrame, manifest: dict, *, analysis_outcome: pd.Series | None = None
+            ) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     eligibility = validate_master(master, manifest)
+    if analysis_outcome is not None:
+        master = master.copy()
+        master["clinical_pregnancy"] = analysis_outcome
+        require_base = {"date_audit_pass", "final_audit_status"}
+        if missing := require_base - set(master.columns):
+            raise ValueError(f"master: missing derived-outcome eligibility columns {sorted(missing)}")
+        base_eligible = (flags(master.date_audit_pass, "date_audit_pass")
+                         & master.final_audit_status.eq("PASS_THREE_WAY")
+                         & master.clinical_pregnancy.notna())
+        eligibility = {feature: base_eligible & numeric(master[column], column).notna()
+                       for feature, column in FEATURES.items()}
+    else:
+        base_eligible = flags(master.eligible_pregnancy_association,
+                              "eligible_pregnancy_association")
     coding = category_coding(master)
     rows, diagnostics, flows = [], [], []
     for feature, column in FEATURES.items():
@@ -244,11 +293,9 @@ def analyze(master: pd.DataFrame, manifest: dict) -> tuple[pd.DataFrame, pd.Data
                       "base_outcome_positive_n": int((master.clinical_pregnancy == 1).sum()),
                       "base_outcome_negative_n": int((master.clinical_pregnancy == 0).sum()),
                       "base_outcome_missing_n": int(master.clinical_pregnancy.isna().sum()),
-                      "pregnancy_base_eligible_n": int(flags(master.eligible_pregnancy_association,
-                                                               "eligible_pregnancy_association").sum()),
+                      "pregnancy_base_eligible_n": int(base_eligible.sum()),
                       "feature_eligible_n": len(eligible),
-                      "feature_unavailable_among_pregnancy_base_n": int(flags(master.eligible_pregnancy_association,
-                                                                               "eligible_pregnancy_association").sum()) - len(eligible),
+                      "feature_unavailable_among_pregnancy_base_n": int(base_eligible.sum()) - len(eligible),
                       "eligible_positive_n": int((eligible.clinical_pregnancy == 1).sum()),
                       "eligible_negative_n": int((eligible.clinical_pregnancy == 0).sum()),
                       "covariate_incomplete_n": int(covariate_missing.any(axis=1).sum()),
@@ -282,14 +329,22 @@ def main() -> None:
     if sha256(gate) != source_manifest["frozen_gate_sha256"]:
         raise ValueError("frozen feature gate SHA256 differs from script 05 manifest")
     master = pd.read_csv(args.master, dtype={"case_id": "string"}, low_memory=False)
-    results, flow, diagnostics = analyze(master, source_manifest)
+    validate_master(master, source_manifest)
+    patient_audit = Path(source_manifest["input_paths"]["patient_audit"])
+    if sha256(patient_audit) != source_manifest["input_sha256"]["patient_audit"]:
+        raise ValueError("patient audit SHA256 differs from script 05 manifest")
+    derived_outcome, outcome_audit = derive_clinical_outcome(master, patient_audit)
+    results, flow, diagnostics = analyze(master, source_manifest,
+                                         analysis_outcome=derived_outcome)
     args.output.mkdir(parents=True)
     paths = {"cohort": args.output / "pregnancy_cohort_flow.csv",
              "associations": args.output / "pregnancy_associations.csv",
-             "diagnostics": args.output / "model_diagnostics.json"}
+             "diagnostics": args.output / "model_diagnostics.json",
+             "outcome_audit": args.output / "outcome_derivation.json"}
     flow.to_csv(paths["cohort"], index=False, encoding="utf-8-sig")
     results.to_csv(paths["associations"], index=False, encoding="utf-8-sig", na_rep="NA")
     paths["diagnostics"].write_text(json.dumps(diagnostics, ensure_ascii=False, indent=2), encoding="utf-8")
+    paths["outcome_audit"].write_text(json.dumps(outcome_audit, ensure_ascii=False, indent=2), encoding="utf-8")
     try:
         revision = subprocess.check_output(["git", "rev-parse", "HEAD"],
                                           cwd=Path(__file__).resolve().parents[1], text=True).strip()
@@ -299,13 +354,16 @@ def main() -> None:
                        "code_revision": revision,
                        "input_paths": {"master": str(args.master.resolve()),
                                        "master_manifest": str(args.master_manifest.resolve()),
-                                       "frozen_gate": str(gate.resolve())},
+                                       "frozen_gate": str(gate.resolve()),
+                                       "patient_audit": str(patient_audit.resolve())},
                        "input_sha256": {"master": sha256(args.master),
                                         "master_manifest": sha256(args.master_manifest),
-                                        "frozen_gate": sha256(gate)},
+                                        "frozen_gate": sha256(gate),
+                                        "patient_audit": sha256(patient_audit)},
                        "output_sha256": {name: sha256(path) for name, path in paths.items()},
                        "primary": "F01 adjusted association", "secondary": ["F07", "F09", "F15"],
-                       "outcome": "clinical_pregnancy 0/1", "model": "logistic regression",
+                       "outcome": "derived full-cohort clinical pregnancy 0/1", "model": "logistic regression",
+                       "outcome_derivation": "recorded clinical yes/no retained; biochemical no with clinical '-' becomes clinical no",
                        "feature_scale": "OR per feature-specific eligible-cohort IQR; same scale in all models",
                        "numeric_covariates": NUMERIC_COVARIATES,
                        "categorical_covariates": CATEGORICAL_COVARIATES,
@@ -316,6 +374,7 @@ def main() -> None:
         json.dumps(output_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     lines = ["# Paper 2 clinical pregnancy associations", "",
              "Logistic association only; ORs are per feature-specific eligible-cohort IQR. No causal or prediction claim.",
+             "Outcome amendment after initial analysis: biochemical 'no' with recorded clinical '-' is coded clinical 'no'; see outcome_derivation.json. The earlier 241-patient analysis was conditional on biochemical positivity.",
              "The adjusted F01 model is the primary inference. Failed models have no OR or P value.",
              "", "| Feature | Model | N | Positive | Negative | OR | 95% CI | Raw P | Holm P | Status |",
              "|---|---|---:|---:|---:|---:|---|---:|---:|---|"]
