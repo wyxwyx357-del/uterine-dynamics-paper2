@@ -27,8 +27,11 @@ Verified reference results:
 
 Patient-level case ID sets matched the pre-migration outputs. Zero-valued activity records remained valid observations.
 
+## Implemented after migration
+- Paper 1 -> Paper 2 feature evidence/eligibility gate: `scripts/04_audit_paper1_feature_eligibility.py`.
+- Repository tests for the feature gate, including rejection of outcome-driven decision columns.
+
 ## Not yet implemented
-- Paper 1 -> Paper 2 feature eligibility audit.
 - Frozen Paper 2 analysis master table builder.
 - Activity association analysis.
 - Clinical pregnancy association analysis.
