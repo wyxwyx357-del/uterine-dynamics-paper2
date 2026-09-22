@@ -14,8 +14,18 @@ These are local reference results and are **not** committed as patient data:
 - 241 had parseable clinical pregnancy outcome.
 - 240 met the preliminary complete-case check for the candidate prediction fields.
 
-## Required regression acceptance before new experiments
-Run scripts 01-03 on the same local inputs and verify that the migrated repository reproduces the reference cohort counts above. Any discrepancy must be resolved before Paper 2 association analyses.
+## Regression acceptance
+Migration regression has passed after the minimal clinical-column resolution fix in `scripts/02_build_video_clinical_match.py`.
+
+Verified reference results:
+- 334 unique case IDs.
+- 334 PASS_THREE_WAY.
+- 325 activity-association candidates.
+- 325 with both forward and reverse activity available.
+- 241 pregnancy-association candidates.
+- 240 preliminary prediction complete cases.
+
+Patient-level case ID sets matched the pre-migration outputs. Zero-valued activity records remained valid observations.
 
 ## Not yet implemented
 - Paper 1 -> Paper 2 feature eligibility audit.
