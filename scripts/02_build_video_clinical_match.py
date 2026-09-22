@@ -8,6 +8,13 @@ from pathlib import Path
 
 import pandas as pd
 
+try:
+    from activity_count_io import read_excel_preserving_activity
+except ModuleNotFoundError as exc:
+    if exc.name != "activity_count_io":
+        raise
+    from scripts.activity_count_io import read_excel_preserving_activity
+
 PATIENT_SHEET = "患者信息提取"
 QC_SHEET = "匹配质控"
 CASE_RE = re.compile(r"(?:^|[_-])(\d+)[_-](20\d{6})(?:\D|$)")
@@ -73,7 +80,7 @@ def real_video_date(row):
 
 
 def read_clinical(path: Path):
-    patient = pd.read_excel(path, sheet_name=PATIENT_SHEET, engine="openpyxl")
+    patient = read_excel_preserving_activity(path, sheet_name=PATIENT_SHEET)
     qc = pd.read_excel(path, sheet_name=QC_SHEET, engine="openpyxl")
 
     rename_patient = {}

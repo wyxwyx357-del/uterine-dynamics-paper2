@@ -9,6 +9,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+try:
+    from activity_count_io import read_excel_preserving_activity
+except ModuleNotFoundError as exc:
+    if exc.name != "activity_count_io":
+        raise
+    from scripts.activity_count_io import read_excel_preserving_activity
+
 INPUT_SHEET = "01_全部病例三方核对"
 PREDICTION_CANDIDATE_FIELDS = [
     "clinical_pregnancy",
@@ -88,7 +95,7 @@ def main() -> None:
     if INPUT_SHEET not in xls.sheet_names:
         raise ValueError(f"missing sheet: {INPUT_SHEET}")
 
-    df = pd.read_excel(src, sheet_name=INPUT_SHEET, engine="openpyxl")
+    df = read_excel_preserving_activity(src, sheet_name=INPUT_SHEET)
     for c in ("case_id", "final_audit_status"):
         if c not in df.columns:
             raise ValueError(f"missing required column: {c}")

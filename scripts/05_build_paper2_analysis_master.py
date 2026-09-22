@@ -12,6 +12,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+try:
+    from activity_count_io import read_excel_preserving_activity
+except ModuleNotFoundError as exc:
+    if exc.name != "activity_count_io":
+        raise
+    from scripts.activity_count_io import read_excel_preserving_activity
+
 
 PATIENT_SHEET = "02_患者级状态"
 FEATURE_IDS = ("F01", "F07", "F09", "F15")
@@ -294,8 +301,8 @@ def main() -> None:
     expected_hash = source_manifest["output_files"][args.paper1_features.name]
     if sha256(args.paper1_features) != expected_hash:
         raise ValueError("Paper 1 feature table SHA256 differs from source manifest")
-    patient_audit = pd.read_excel(
-        args.patient_audit, sheet_name=PATIENT_SHEET, engine="openpyxl", dtype={"case_id": "string"}
+    patient_audit = read_excel_preserving_activity(
+        args.patient_audit, sheet_name=PATIENT_SHEET, dtype={"case_id": "string"}
     )
     patient_features = pd.read_csv(args.paper1_features, encoding="utf-8-sig", dtype={"case_id": "string"})
     if len(patient_features) != source_manifest["final_main_analysis_count"]:

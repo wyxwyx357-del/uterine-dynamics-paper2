@@ -46,8 +46,8 @@ def inputs():
         "eligible_pregnancy_association": [True, False, True],
         "clinical_pregnancy_parseable_01": [True, False, True],
         "clinical_pregnancy_binary_qc": [1, None, 0],
-        "peristalsis_forward_count": [0, 0, None],
-        "peristalsis_reverse_count": [0, 1, None],
+        "peristalsis_forward_count": pd.Series([0, 0, None], dtype=object),
+        "peristalsis_reverse_count": pd.Series([0, 1, None], dtype=object),
         "female_age": [30, 31, 32],
         "female_bmi": [21, 22, 23],
         "infertility_years\nsource": [2, 3, 4],
@@ -107,6 +107,9 @@ def test_zero_activity_and_missing_pregnancy_preserved():
 
 @pytest.mark.parametrize("column,invalid", [
     ("peristalsis_forward_count", "unexpected text"),
+    ("peristalsis_forward_count", "NULL"),
+    ("peristalsis_reverse_count", "#N/A"),
+    ("peristalsis_reverse_count", float("-inf")),
     ("peristalsis_reverse_count", "未记录"),
     ("peristalsis_forward_count", -1),
     ("peristalsis_reverse_count", 0.5),
