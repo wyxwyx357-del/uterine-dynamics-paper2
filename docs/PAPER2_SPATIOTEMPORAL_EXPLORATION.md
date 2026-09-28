@@ -23,7 +23,6 @@ Paper 1 space output: 归一化空间分箱曲线_长表.csv, 患者级空间结
 From the Paper 2 repository in PowerShell, replace the three placeholder directories:
 
 ~~~powershell
-git pull origin main
 python -m pytest -q tests/test_clinician_activity_association.py tests/test_explore_spatiotemporal_activity.py
 $master = "C:\PATH\TO\SCRIPT05_OUTPUT"
 $time = "C:\PATH\TO\PAPER1_TIME_OUTPUT"

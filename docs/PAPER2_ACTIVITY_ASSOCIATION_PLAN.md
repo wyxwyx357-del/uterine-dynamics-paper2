@@ -2,8 +2,8 @@
 
 This plan is fixed before running script 06 on the formal patient master. It tests association, not agreement, causation, or prediction.
 
-- PRIMARY family (2 tests): F01 versus clinician-recorded forward activity count; F01 versus clinician-recorded reverse activity count.
-- SECONDARY family (6 tests): F07, F09, and F15, each versus forward and reverse activity count.
+- PRIMARY family (2 tests): F01 versus clinician-recorded forward activity frequency; F01 versus clinician-recorded reverse activity frequency.
+- SECONDARY family (6 tests): F07, F09, and F15, each versus forward and reverse activity frequency. Both fields record events per minute, and a recorded 0 is a valid observation.
 - Each comparison uses only its own `eligible_activity_Fxx` patients and a finite frozen measurement. No four-measurement complete-case intersection. Zero activity counts are valid; negative or noninteger counts are data errors.
 - Statistic: Spearman rank correlation with average ranks for ties. No clinical covariates.
 - Two-sided raw P: 9,999 random permutations of one variable's patient pairing, with the plus-one Monte Carlo correction and fixed seed 20260922 plus the comparison's fixed index (0 through 7). No asymptotic P-value substitution.

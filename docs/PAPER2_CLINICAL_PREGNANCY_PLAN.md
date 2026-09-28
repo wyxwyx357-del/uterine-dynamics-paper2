@@ -1,6 +1,6 @@
 # Paper 2 clinical pregnancy association (script 08)
 
-This is a separate pregnancy association analysis using the frozen script-05 master. It does not change scripts 02–07, the eight activity comparisons, feature roles, or the Paper 1 feature gate. No AUC, classifier, feature selection, or incremental prediction is performed.
+This is a supplementary pregnancy association analysis using the frozen script-05 master. The current article's main question is the exploratory feature–Doppler association. This branch does not change scripts 02–07, the eight activity comparisons, feature roles, or the Paper 1 feature gate. No AUC, classifier, feature selection, or incremental prediction is performed.
 
 ## Outcome amendment after the first script-08 run
 
@@ -10,7 +10,7 @@ The amended full-cohort clinical outcome retains recorded clinical `是` as 1 an
 
 ## Cohorts and model hierarchy
 
-- F01 is PRIMARY. Its adjusted logistic association is the main pregnancy inference in this stage. F07, F09 and F15 are SECONDARY.
+- F01 is PRIMARY within this historical pregnancy analysis stage. Its adjusted logistic association was the main pregnancy inference at that stage; F07, F09 and F15 are SECONDARY. These labels do not make pregnancy the current article's main endpoint.
 - The existing `eligible_pregnancy_Fxx` flags are checked against the recorded clinical outcome and the script-05 manifest. Because they exclude the structurally blank biochemical-negative rows, the amended analysis eligibility is derived separately as verified three-way audit pass, known amended outcome, and the feature's own available measurement. Features do not share a four-feature complete-case cohort.
 - Each feature has three reported models: `UNADJUSTED_FULL` on its eligible cohort; `UNADJUSTED_MATCHED` on the same covariate-complete patients as the adjusted model; and `ADJUSTED` on those covariate-complete patients. No covariate is imputed.
 - The fixed adjustment set contains numeric age, BMI, infertility years, transferred embryo count, and endometrial thickness; categorical infertility type, embryo type, endometrial type, and cycle type. No variable is selected or removed by its association result.

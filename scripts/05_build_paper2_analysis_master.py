@@ -219,10 +219,13 @@ def build_master(
     for name in ("date_audit_pass", "eligible_activity_association",
                  "eligible_pregnancy_association", "clinical_pregnancy_parseable_01"):
         base[name] = boolean_column(base[name], f"patient audit {name}")
+    if not base.date_audit_pass.equals(base.final_audit_status.eq("PASS_THREE_WAY")):
+        raise ValueError("patient audit: date eligibility disagrees with confirmed status")
     if not base.clinical_pregnancy.notna().equals(base.clinical_pregnancy_parseable_01):
         raise ValueError("patient audit: pregnancy parseability flag disagrees with parsed 0/1")
-    if base.loc[base.eligible_pregnancy_association, "clinical_pregnancy"].isna().any():
-        raise ValueError("patient audit: pregnancy eligibility includes missing outcome")
+    if not base.eligible_pregnancy_association.equals(
+            base.date_audit_pass & base.clinical_pregnancy.notna()):
+        raise ValueError("patient audit: pregnancy eligibility disagrees with date/outcome")
     activity_numeric = pd.DataFrame(
         {
             column: parse_activity_count_column(base[column], column)
@@ -230,8 +233,9 @@ def build_master(
         },
         index=base.index,
     )
-    if activity_numeric.loc[base.eligible_activity_association].isna().all(axis=1).any():
-        raise ValueError("patient audit: activity eligibility includes no recorded activity")
+    if not base.eligible_activity_association.equals(
+            base.date_audit_pass & activity_numeric.notna().any(axis=1)):
+        raise ValueError("patient audit: activity eligibility disagrees with date/counts")
     base[["peristalsis_forward_count", "peristalsis_reverse_count"]] = activity_numeric
 
     output_columns = ["case_id", *STATUS_COLUMNS, *CLINICAL_COLUMNS, "clinical_pregnancy"]

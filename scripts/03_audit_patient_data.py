@@ -17,28 +17,16 @@ except ModuleNotFoundError as exc:
     from scripts.activity_count_io import read_excel_preserving_activity
 
 INPUT_SHEET = "01_全部病例三方核对"
-PREDICTION_CANDIDATE_FIELDS = [
-    "clinical_pregnancy",
-    "female_age",
-    "female_bmi",
-    "endometrial_thickness_mm",
-    "transfer_embryo_count",
-    "embryo_type",
-]
-
-
 def clean_case_id(value) -> str:
     if value is None or pd.isna(value):
         return ""
     s = str(value).strip()
-    try:
-        f = float(s)
-        if f.is_integer():
-            return str(int(f))
-    except Exception:
-        pass
-    m = re.search(r"\d+", s)
-    return m.group(0) if m else s
+    if re.fullmatch(r"\d+(?:\.0+)?", s):
+        return str(int(s.split(".")[0]))
+    numbers = re.findall(r"\d+", s)
+    if len(numbers) > 1:
+        raise ValueError("ambiguous case_id with multiple numeric groups")
+    return str(int(numbers[0])) if numbers else s
 
 
 def missing(s: pd.Series) -> pd.Series:
@@ -91,9 +79,9 @@ def main() -> None:
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    xls = pd.ExcelFile(src, engine="openpyxl")
-    if INPUT_SHEET not in xls.sheet_names:
-        raise ValueError(f"missing sheet: {INPUT_SHEET}")
+    with pd.ExcelFile(src, engine="openpyxl") as xls:
+        if INPUT_SHEET not in xls.sheet_names:
+            raise ValueError(f"missing sheet: {INPUT_SHEET}")
 
     df = read_excel_preserving_activity(src, sheet_name=INPUT_SHEET)
     for c in ("case_id", "final_audit_status"):
@@ -130,12 +118,6 @@ def main() -> None:
     df["eligible_activity_both_directions"] = base_ok & df["both_activity_available"]
     df["eligible_pregnancy_association"] = base_ok & df["clinical_pregnancy_parseable_01"]
 
-    pred_fields = [c for c in PREDICTION_CANDIDATE_FIELDS if c in df.columns]
-    complete = pd.Series(True, index=df.index)
-    for c in pred_fields:
-        complete &= df["clinical_pregnancy_parseable_01"] if c == "clinical_pregnancy" else ~missing(df[c])
-    df["prediction_candidate_complete_case"] = base_ok & complete
-
     clinical_cols = [
         c for c in [
             "clinical_pregnancy", "biochemical_pregnancy",
@@ -150,7 +132,6 @@ def main() -> None:
     activity_cohort = df.loc[df["eligible_activity_association"]].copy()
     both_cohort = df.loc[df["eligible_activity_both_directions"]].copy()
     pregnancy_cohort = df.loc[df["eligible_pregnancy_association"]].copy()
-    prediction_cohort = df.loc[df["prediction_candidate_complete_case"]].copy()
     duplicate_cases = df.loc[df["case_id_duplicate_flag"].eq("DUPLICATE")].copy()
 
     summary = pd.DataFrame([
@@ -163,7 +144,6 @@ def main() -> None:
         ("clinical_pregnancy_parseable_01", int(df["clinical_pregnancy_parseable_01"].sum())),
         ("eligible_activity_association", len(activity_cohort)),
         ("eligible_pregnancy_association", len(pregnancy_cohort)),
-        ("prediction_candidate_complete_case", len(prediction_cohort)),
     ], columns=["item", "n"])
 
     with pd.ExcelWriter(out, engine="openpyxl") as writer:
@@ -172,7 +152,6 @@ def main() -> None:
         activity_cohort.to_excel(writer, sheet_name="03_活动关联候选队列", index=False)
         both_cohort.to_excel(writer, sheet_name="04_双方向活动完整", index=False)
         pregnancy_cohort.to_excel(writer, sheet_name="05_妊娠关联候选队列", index=False)
-        prediction_cohort.to_excel(writer, sheet_name="06_预测候选完整病例", index=False)
         variable_summary.to_excel(writer, sheet_name="07_临床变量完整性", index=False)
         duplicate_cases.to_excel(writer, sheet_name="08_case重复审查", index=False)
 

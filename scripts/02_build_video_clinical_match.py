@@ -24,14 +24,12 @@ def clean_case_id(x) -> str:
     if x is None or pd.isna(x):
         return ""
     s = str(x).strip()
-    try:
-        f = float(s)
-        if f.is_integer():
-            return str(int(f))
-    except Exception:
-        pass
-    m = re.search(r"\d+", s)
-    return m.group(0) if m else s
+    if re.fullmatch(r"\d+(?:\.0+)?", s):
+        return str(int(s.split(".")[0]))
+    numbers = re.findall(r"\d+", s)
+    if len(numbers) > 1:
+        raise ValueError("ambiguous case_id with multiple numeric groups")
+    return str(int(numbers[0])) if numbers else s
 
 
 def date8(x) -> str:
@@ -62,10 +60,17 @@ def by_prefix(df: pd.DataFrame, prefix: str) -> str:
 
 
 def parse_video_identity(row):
+    candidates = []
     for c in ("patient_folder", "video_filename", "video_relpath"):
         m = CASE_RE.search(str(row.get(c, "") or ""))
         if m:
-            return clean_case_id(m.group(1)), m.group(2), c
+            candidates.append((clean_case_id(m.group(1)), m.group(2), c))
+    if len({candidate[0] for candidate in candidates}) > 1:
+        return "", date8(row.get("name_date", "")), "CONFLICTING_CASE_ID"
+    if len({candidate[1] for candidate in candidates}) > 1:
+        return "", date8(row.get("name_date", "")), "CONFLICTING_FILENAME_DATE"
+    if candidates:
+        return candidates[0]
     return "", date8(row.get("name_date", "")), "UNRESOLVED"
 
 
