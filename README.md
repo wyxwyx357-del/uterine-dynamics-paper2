@@ -20,7 +20,11 @@ This repository does **not** contain raw patient videos, DICOM files, patient sp
 - scripts/05_build_paper2_analysis_master.py — build the verified patient-level master from the frozen feature gate, original clinician counts and video/date checks. The fixed feature roles for this analysis are F01 PRIMARY and F07/F09/F15 SECONDARY.
 - scripts/06_analyze_clinician_activity_association.py — eight original frozen F01/F07/F09/F15 versus forward/reverse clinician-count comparisons; separate Holm primary and secondary families.
 - scripts/07_explore_spatiotemporal_activity.py — **separate exploratory** associations of two newly derived F01 original-profile heterogeneity indices with forward/reverse counts (four comparisons, separate Holm family). Does **not** modify script 06 or promote new features into the Paper 1 gate.
+- scripts/11_analyze_doppler_associations.py — separate exploratory analysis of four frozen features against six endometrial Doppler measures (24 comparisons), with quality and clinical sensitivity checks.
+- scripts/12_doppler_sensitivity.py — earlier focused Doppler sensitivity checks retained for traceability.
 
 Read docs/PAPER2_ACTIVITY_ASSOCIATION_PLAN.md for script-06 methods and docs/PAPER2_SPATIOTEMPORAL_EXPLORATION.md for script-07 inputs, method, and a ready-to-edit PowerShell command.
+
+Read docs/PAPER2_DOPPLER_ASSOCIATIONS.md for the Doppler analysis inputs, method, and run commands. Patient-level source files and generated results stay outside Git.
 
 Paper 1 source profiles and patient-level output CSVs, not aggregate stability tables, are required for script 07. They are read locally and are not committed to this repository. The new F01-derived temporal/spatial indices are exploratory and **not** separately qualified by the Paper 1 robustness gate.
