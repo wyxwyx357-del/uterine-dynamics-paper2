@@ -32,4 +32,4 @@ python -X utf8 scripts/12_doppler_sensitivity.py `
 
 The verified 2026-09-28 run is retained in the parent workspace at `analysis_outputs/doppler_complete_20260928/results_verified/`. Its README explains the source and quality checks. The sibling `results/` directory was an initial intermediate run with an invalid quality join and must not be used for reporting.
 
-Script 11 reproduces the frozen 2026-09-28 cohort and explicitly checks four previously reported point estimates. It requires the documented QC and repair inputs, so it is not a generic analysis for new patients. New-cohort analysis rules should be frozen separately before use.
+Script 11 can optionally enforce the four archived 2026-09-28 point estimates with `--verify-reference-rho` when the purpose is legacy-cohort reproduction. That gate is not a validity condition for a legitimately corrected cohort or future new patients. The documented QC and repair inputs remain required; new-cohort analysis rules should be frozen separately before use.
