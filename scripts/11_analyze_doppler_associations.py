@@ -34,6 +34,14 @@ MODELS = {
     'motion_and_error': ['female_age', 'endometrial_thickness_mm', QUALITY[0], QUALITY[1]],
 }
 
+REFERENCE_RHO = {
+    ('F09', 'VI'): -0.2380,
+    ('F09', 'VFI'): -0.2288,
+    ('F15', 'VI'): -0.2143,
+    ('F15', 'VFI'): -0.2121,
+}
+SENSITIVITY_PAIRS = tuple(REFERENCE_RHO)
+
 
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -170,6 +178,11 @@ def main():
     parser.add_argument('--repair', type=Path, required=True,
                         help='14-case topology repair CSV')
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument(
+        '--verify-reference-rho',
+        action='store_true',
+        help='Legacy reproduction gate: require the four archived original-cohort rho values.',
+    )
     args = parser.parse_args()
     if args.output.exists():
         raise ValueError('Output must be a new directory')
@@ -234,12 +247,13 @@ def main():
         table[column] = numeric
     # Clinician activity availability does not govern Doppler inclusion.
     results = association_table(table, stats, features)
-    # Existing reported point estimates must reproduce to their printed precision.
-    expected = {('F09','VI'): -.2380, ('F09','VFI'): -.2288,
-                ('F15','VI'): -.2143, ('F15','VFI'): -.2121}
-    if not all(abs(results.set_index(['feature','doppler']).loc[k,'rho']-v)<.000051
-               for k,v in expected.items()):
-        raise ValueError('Reference cohort point estimates differ from verified values')
+    # Optional legacy reproduction gate. It is not a validity condition for a
+    # legitimately corrected or future cohort.
+    if args.verify_reference_rho:
+        indexed = results.set_index(['feature', 'doppler'])
+        if not all(abs(indexed.loc[key, 'rho'] - value) < .000051
+                   for key, value in REFERENCE_RHO.items()):
+            raise ValueError('Reference cohort point estimates differ from archived values')
     out = args.output
     out.mkdir(parents=True)
     pd.DataFrame(availability).to_csv(out/'availability.csv', index=False)
@@ -247,7 +261,7 @@ def main():
     sensitivity = []
     strata = []
     robust = []
-    for f, d in expected:
+    for f, d in SENSITIVITY_PAIRS:
         v = table[[features[f],d]].dropna().to_numpy(float)
         x,y = v.T
         keep = ((x>=np.quantile(x,.01)) & (x<=np.quantile(x,.99)) &
@@ -330,6 +344,7 @@ def main():
                 'doppler_source_columns':original_columns, 'permutations':9999,'bootstraps':5000,
                 'permutation_seed_base':20260922,'bootstrap_seed_base':20270922,
                 'seed_note':'Reuses project statistical implementation; original Doppler run seed was not archived. Exact Monte Carlo P/CI equality to old text is not required.',
+                'reference_rho_check_requested': bool(args.verify_reference_rho),
                 'sensitivity_bootstraps':1000,'sensitivity_seed_base':202609280,
                 'controls':MODELS,'python':platform.python_version(),
                 'numpy':np.__version__,'pandas':pd.__version__,
@@ -338,11 +353,15 @@ def main():
                                 'QC IDs parsed by filename suffix; feature source dates verified; F01 agrees outside documented 14 topology-repaired cases',
                                 '24 rho values cross-checked with scipy.stats.spearmanr',
                                 'Holm verified with independent formula',
-                                '4 published point estimates reproduced to rounding precision',
+                                'legacy reference rho gate passed' if args.verify_reference_rho else
+                                'legacy reference rho gate not requested',
                                 'unique one-to-one joins enforced', 'all input hashes unchanged']}
     selected = results.loc[results.holm_p_24.lt(.05),['feature','doppler','n','rho','ci_lower','ci_upper','raw_p','holm_p_24']]
     report = '# 短视频动态特征与内膜多普勒：现有队列完整复算\n\n'
     report += '日期：2026-09-28。全部分析仍为探索性。测量部位和同次检查对应沿用研究者已确认的信息。\n\n'
+    report += ('旧队列四个rho复现门槛：已启用。\\n\\n' if args.verify_reference_rho
+               else '旧队列四个rho复现门槛：未启用；这不是新/修正队列的有效性条件。\\n\\n')
+
     report += '## 24项分析\n\n四项冻结特征与六项多普勒指标逐对使用有效病例；缺失不填零。双侧置换9,999次，配对病例bootstrap 5,000次，Holm覆盖全部24项。完整结果见 associations_24.csv。\n\n'
     report += '通过Holm校正的比较：\n\n'+markdown(selected)+'\n\n'
     report += '## 临床、采集及质量敏感性\n\n所有连续变量转秩后，分别将特征和多普勒对协变量回归，计算残差相关；95%区间用1,000次患者重抽样，每次重新转秩和拟合。同一完整病例集的未调整值同时列出，避免把缺失导致的样本变化误当作调整效果。它们是事后敏感性检查，不增加独立确认性结论。\n\n'
