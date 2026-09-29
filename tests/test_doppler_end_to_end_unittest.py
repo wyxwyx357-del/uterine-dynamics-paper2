@@ -130,31 +130,30 @@ class DopplerEndToEndSyntheticTest(unittest.TestCase):
         return master_path, manifest_path, audit_path, qc_dir, repair_path
 
     @staticmethod
-    def fast_association_table(table, stats, features):
-        expected = {
-            ("F09", "VI"): -0.2380,
-            ("F09", "VFI"): -0.2288,
-            ("F15", "VI"): -0.2143,
-            ("F15", "VFI"): -0.2121,
-        }
-        rows = []
-        for feature in features:
-            for variable in doppler.DOPPLER:
-                pair = table[[features[feature], variable]].dropna()
-                rho = expected.get((feature, variable), 0.05)
-                rows.append({
-                    "feature": feature,
-                    "doppler": variable,
-                    "n": len(pair),
-                    "status": "EVALUABLE",
-                    "rho": rho,
-                    "ci_lower": rho - 0.1,
-                    "ci_upper": rho + 0.1,
-                    "raw_p": 0.2,
-                    "bootstrap_valid": 20,
-                    "holm_p_24": 0.8,
-                })
-        return pd.DataFrame(rows)
+    def write_fast_stats(root: Path) -> Path:
+        """Wrapper around the real script-06 statistics with small Monte Carlo counts."""
+        real = ROOT / "scripts" / "06_analyze_clinician_activity_association.py"
+        wrapper = root / "fast_stats.py"
+        wrapper.write_text(
+            "from pathlib import Path\n"
+            "import importlib.util\n"
+            f"REAL = Path({str(real)!r})\n"
+            "spec = importlib.util.spec_from_file_location('real_activity_stats', REAL)\n"
+            "real = importlib.util.module_from_spec(spec)\n"
+            "spec.loader.exec_module(real)\n"
+            "real.PERMUTATIONS = 9\n"
+            "real.BOOTSTRAPS = 20\n"
+            "FEATURES = real.FEATURES\n"
+            "validate_master = real.validate_master\n"
+            "spearman = real.spearman\n"
+            "holm_with_planned_family = real.holm_with_planned_family\n"
+            "def association(x, y, index):\n"
+            "    real.PERMUTATIONS = 9\n"
+            "    real.BOOTSTRAPS = 20\n"
+            "    return real.association(x, y, index)\n",
+            encoding="utf-8",
+        )
+        return wrapper
 
     @staticmethod
     def fast_boot_partial(a, seed, b=1000):
@@ -166,6 +165,7 @@ class DopplerEndToEndSyntheticTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             master, manifest, audit, qc_dir, repair = self.build_inputs(root)
+            fast_stats = self.write_fast_stats(root)
             output = root / "out"
 
             argv = [
@@ -181,7 +181,7 @@ class DopplerEndToEndSyntheticTest(unittest.TestCase):
             old_argv = sys.argv
             try:
                 sys.argv = argv
-                with mock.patch.object(doppler, "association_table", self.fast_association_table), \
+                with mock.patch.object(doppler, "STAT", fast_stats), \
                         mock.patch.object(doppler, "boot_partial", self.fast_boot_partial), \
                         contextlib.redirect_stdout(io.StringIO()):
                     doppler.main()
