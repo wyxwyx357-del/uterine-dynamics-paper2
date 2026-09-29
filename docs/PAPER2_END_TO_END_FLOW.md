@@ -87,7 +87,7 @@ python -X utf8 scripts/11_analyze_doppler_associations.py `
   --output "NEW_11_DIR"
 ```
 
-Script 11 makes all 24 feature × Doppler Spearman comparisons, one 24-test Holm family, an availability table, specified outlier/quality/clinical sensitivities, aggregate figures, report, and input/output hash manifest. F09–VI is a *post-result* focus for later new-patient validation, not a primary hypothesis of this original cohort. Script 11 contains four original-cohort point-estimate checks and a specific QC/repair contract: it cannot be used as an unchanged protocol for new patients. Do not infer identical VI/FI/VFI acquisition settings from DICOM.
+Script 11 makes all 24 feature × Doppler Spearman comparisons, one 24-test Holm family, an availability table, specified outlier/quality/clinical sensitivities, aggregate figures, report, and input/output hash manifest. F09–VI is a *post-result* focus for later new-patient validation, not a primary hypothesis of this original cohort. Script 11 retains the four archived original-cohort point estimates as an optional legacy reproduction gate (`--verify-reference-rho`) plus a specific QC/repair contract. The archived rho gate should be used only when reproducing that frozen cohort; it is not a validity condition for a legitimately corrected cohort or future new patients. Do not infer identical VI/FI/VFI acquisition settings from DICOM.
 
 **Other separate code (09–10, 12).** Local scripts 09–10, if present, explore wall synchrony and do not change the frozen feature set. Script 12 is an earlier focused Doppler check. None replaces the 24-comparison result or enters it automatically.
 
