@@ -1,9 +1,9 @@
 """End-to-end synthetic smoke test for script 11.
 
 This test uses only generated, patient-free data. It exercises the real script-11
-file/merge/QC/repair/output path while replacing the computationally expensive
-24-association Monte Carlo loop and sensitivity bootstrap with deterministic
-fast stand-ins. Unit tests cover the underlying statistics separately.
+file/merge/QC/repair/output path and the real 24-comparison Spearman/Holm logic.
+Only Monte Carlo repetition counts are reduced for speed, and the expensive
+sensitivity bootstrap is replaced with a deterministic fast stand-in.
 """
 from __future__ import annotations
 
