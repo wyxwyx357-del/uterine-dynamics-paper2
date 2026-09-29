@@ -224,15 +224,26 @@ def main():
     quality = inventory[['case_id', 'analysis_id', 'qc_filename_date']].merge(quality, on='analysis_id', validate='one_to_one')
     quality = quality.rename(columns={'F01':'qc_F01'})
     table = table.merge(quality[['case_id', 'status', 'qc_filename_date', 'qc_F01', *QUALITY]], on='case_id', how='left', validate='one_to_one')
-    available = pd.to_numeric(table[features['F09']],errors='coerce').notna()
-    if not table.loc[available,'status'].eq('OK').all():
-        raise ValueError('Feature-available cases lack valid QC mapping')
-    if not (pd.to_numeric(table.loc[available,'paper1_filename_date8']) == table.loc[available,'qc_filename_date']).all():
-        raise ValueError('QC source filename date does not match feature source')
+    sensitivity_available = (
+        pd.to_numeric(table[features['F09']], errors='coerce').notna()
+        | pd.to_numeric(table[features['F15']], errors='coerce').notna()
+    )
+    if not table.loc[sensitivity_available, 'status'].eq('OK').all():
+        raise ValueError('Sensitivity-feature cases lack valid QC mapping')
+    if not (
+        pd.to_numeric(table.loc[sensitivity_available, 'paper1_filename_date8'])
+        == table.loc[sensitivity_available, 'qc_filename_date']
+    ).all():
+        raise ValueError('QC source filename date does not match sensitivity-feature source')
     repaired_ids = verified_repair_ids(repair_path, master)
     table['topology_repaired'] = table.case_id.isin(repaired_ids)
-    unaffected = available & ~table.topology_repaired
-    if not np.allclose(table.loc[unaffected,features['F01']],table.loc[unaffected,'qc_F01'],equal_nan=False):
+    f01_available = pd.to_numeric(table[features['F01']], errors='coerce').notna()
+    unaffected = f01_available & ~table.topology_repaired
+    if not np.allclose(
+        table.loc[unaffected, features['F01']],
+        table.loc[unaffected, 'qc_F01'],
+        equal_nan=False,
+    ):
         raise ValueError('Unexpected QC/feature difference outside documented 14 repaired cases')
     fields = [*features.values(), *DOPPLER, 'female_age', 'female_bmi', 'endometrial_thickness_mm', *QUALITY]
     availability = []
@@ -313,14 +324,14 @@ def main():
         ax.set(xlabel=key, ylabel='Patients', title=f'{key}: observed distribution')
     fig.savefig(out/'01_distributions.png', dpi=180); plt.close(fig)
     fig, axes = plt.subplots(2, 2, figsize=(11, 8), constrained_layout=True)
-    for ax, (f,d) in zip(axes.flat, expected):
+    for ax, (f,d) in zip(axes.flat, SENSITIVITY_PAIRS):
         a = table[[features[f],d]].dropna().to_numpy(float)
         ax.scatter(a[:,0],a[:,1],s=15,alpha=.45,color='#287da4',edgecolors='none')
         row = results.set_index(['feature','doppler']).loc[(f,d)]
         ax.set(xlabel=f, ylabel=d, title=f'n={len(a)}; Spearman rho={row.rho:.3f}')
     fig.savefig(out/'02_raw_scatter.png', dpi=180); plt.close(fig)
     fig, axes = plt.subplots(2, 2, figsize=(11, 8), constrained_layout=True)
-    for ax, (f,d) in zip(axes.flat, expected):
+    for ax, (f,d) in zip(axes.flat, SENSITIVITY_PAIRS):
         a = table[[features[f],d]].dropna().to_numpy(float)
         r = rankdata(a,axis=0)/len(a)
         ax.scatter(r[:,0],r[:,1],s=14,alpha=.35,color='#287da4',edgecolors='none')
